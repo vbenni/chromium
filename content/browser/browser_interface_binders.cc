@@ -13,6 +13,7 @@
 #include "build/branding_buildflags.h"
 #include "build/build_config.h"
 #include "cc/base/switches.h"
+#include "components/ml/mojom/webnn_service.mojom.h"
 #include "content/browser/attribution_reporting/attribution_internals.mojom.h"
 #include "content/browser/attribution_reporting/attribution_internals_ui.h"
 #include "content/browser/background_fetch/background_fetch_service_impl.h"
@@ -248,6 +249,25 @@ void BindFaceDetectionProvider(
 void BindTextDetection(
     mojo::PendingReceiver<shape_detection::mojom::TextDetection> receiver) {
   GetShapeDetectionService()->BindTextDetection(std::move(receiver));
+}
+
+ml::webnn::mojom::WebnnService* GetWebnnService() {
+  static base::NoDestructor<mojo::Remote<ml::webnn::mojom::WebnnService>>
+      remote;
+  if (!*remote) {
+    auto* gpu = GpuProcessHost::Get();
+    if (gpu) {
+      gpu->RunService(remote->BindNewPipeAndPassReceiver());
+    }
+    remote->reset_on_disconnect();
+  }
+
+  return remote->get();
+}
+
+void BindMojoServer(
+    mojo::PendingReceiver<ml::webnn::mojom::MojoServer> receiver) {
+  GetWebnnService()->BindMojoServer(std::move(receiver));
 }
 
 #if BUILDFLAG(IS_MAC)
@@ -896,6 +916,7 @@ void PopulateFrameBinders(RenderFrameHostImpl* host, mojo::BinderMap* map) {
     map->Add<ml::model_loader::mojom::MLService>(
         base::BindRepeating(&CreateMLService));
   }
+  map->Add<ml::webnn::mojom::MojoServer>(base::BindRepeating(&BindMojoServer));
 
   if (base::FeatureList::IsEnabled(blink::features::kPendingBeaconAPI)) {
     map->Add<blink::mojom::PendingBeaconHost>(base::BindRepeating(
